@@ -27,8 +27,6 @@ Nmax = max(tmatrix.Nmax, beam.Nmax);
 tmatrix.Nmax = Nmax;
 beam.Nmax = Nmax;
 
-equiv_ka = nmax2ka(Nmax);
-
 % Normalise the beam power
 power=beam.power();
 beam = beam / power;
@@ -44,16 +42,14 @@ fz=zeros(size(zs));
 chkflg=false;
 jj=0;
 
-p=zeros(length(a),1);
-q=p;
-
 while ~chkflg
     jj=jj+1;
     for ii=1:length(zs)
         if fz(ii)==0
             tbeam = beam.translateZ(zs(ii));
             sbeam = tmatrix * tbeam;
-            fz(ii)=force_z(tbeam, sbeam);
+            fz3 = ott.forcetorque(tbeam, sbeam);
+            fz(ii) = fz3(3);
         end
     end
     
@@ -112,5 +108,3 @@ else
 end
 
 ott_warning('external');
-
-return
