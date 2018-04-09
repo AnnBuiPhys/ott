@@ -6,8 +6,8 @@ classdef BscPmGauss < ott.BscPointmatch
 %   mode                Beam modes (2 or 4 element vector)
 %   polarisation        Beam polarisation
 %   truncation_angle    Truncation angle for beam
-%   beam_offset         Offset for original beam calculation
-%   waist0              Beam waist at focal plane
+%   offset              Offset for original beam calculation
+%   w0                  Beam waist at focal plane
 %
 % BscPmGauss methods:
 %
@@ -18,17 +18,23 @@ classdef BscPmGauss < ott.BscPointmatch
 % See LICENSE.md for information about using/distributing this file.
 
   properties (SetAccess=protected)
-    type               % Type of beam ('gaussian', 'lg', 'hg', or 'ig')
+    gtype              % Type of beam ('gaussian', 'lg', 'hg', or 'ig')
     mode               % Beam modes (2 or 4 element vector)
     polarisation       % Beam polarisation
     truncation_angle   % Truncation angle for beam
-    beam_offset        % Offset for original beam calculation
-    waist0             % Beam waist at focal plane
+    offset             % Offset for original beam calculation
+    w0                 % Beam waist at focal plane
   end
 
   % TODO: Generalize BscPointmatch for farfield and focal plane
   % TODO: Incorperate bsc_pointmatch_focalplane option for gaussian beams.
 
+  methods (Static)
+    function l = supported_beam_type(s)
+      l = strcmp(s, 'lg') || strcmp(s, 'hg') || strcmp(s, 'ig');
+    end
+  end
+  
   methods
     function beam = BscPmGauss(varargin)
       %BSCPMGAUSS construct a new IG, HG or LG gaussian beam.
@@ -42,7 +48,7 @@ classdef BscPmGauss < ott.BscPointmatch
       %     'ig'    Ince-Gauss      [ paraxial azimuthal parity elipticity ]
       %
       % BSCPMGAUSS(..., 'Nmax') specifies the desired Nmax for the beam.
-      % If omitted, Nmax is estimated using ka2nmax(k_medium*waist0).
+      % If omitted, Nmax is estimated using ka2nmax(k_medium*w0).
       %
       % TODO: Documentation
 
@@ -51,12 +57,17 @@ classdef BscPmGauss < ott.BscPointmatch
 
       % Parse inputs
       p = inputParser;
-      p.addOptional('type', 'lg');
+      p.addOptional('type', 'lg', @ott.BscPmGauss.supported_beam_type);
       p.addOptional('mode', [ 0 0 ]);
 
       p.addParameter('Nmax', []);
       p.addParameter('offset', []);
       p.addParameter('polarisation', [ 1 1i ]);
+      p.addParameter('wavelength0', 1);
+
+      p.addParameter('k_medium', []);
+      p.addParameter('index_medium', []);
+      p.addParameter('wavelength_medium', []);
 
       p.addParameter('NA', []);
       p.addParameter('w0', []);
@@ -67,6 +78,70 @@ classdef BscPmGauss < ott.BscPointmatch
       p.addParameter('truncation_angle', []);
 
       p.parse(varargin{:});
+
+      % Store parameters
+      beam.gtype = p.Results.type;
+      beam.mode = p.Results.mode;
+      beam.polarisation = p.Results.polarisation;
+      beam.offset = p.Results.offset;
+      beam.k_medium = ott.Bsc.parser_k_medium(p);
+
+      % Store truncation angle
+      if isempty(p.Results.truncation_angle_deg) &&  ...
+          isempty(p.Results.truncation_angle)
+        beam.truncation_angle = pi/2;
+      elseif ~isempty(p.Results.truncation_angle)
+        beam.truncation_angle = p.Results.truncation_angle;
+      elseif ~isempty(p.Results.truncation_angle_deg)
+        beam.truncation_angle = p.Results.truncation_angle * pi/180;
+      else
+        error('Truncation angle given in degrees and radians');
+      end
+      
+      % Store or calculate w0
+      if isempty(p.Results.w0) && isempty(p.Results.angle) ...
+          && isempty(p.Results.angle_deg) && isempty(p.Results.NA) ...
+          && isempty(p.Results.index_medium)
+        if strcmp(p.Results.type, 'lg')
+          NA = 1.02;
+          beam_angle = asin(NA/p.Results.index_medium)*180.0/pi;
+          beam.w0 = ott.utils.lg_mode_w0(p.Results.mode, beam_angle);
+        else
+          error('No beam waist specified');
+        end
+      elseif ~isempty(p.Results.NA) && ~isempty(p.Results.index_medium)
+        if strcmp(p.Results.type, 'lg')
+          NA = p.Results.NA;
+          beam_angle = asin(NA/p.Results.index_medium)*180.0/pi;
+          beam.w0 = ott.utils.lg_mode_w0(p.Results.mode, beam_angle);
+        else
+          error('Unable to calculate beam waist from NA');
+        end
+      elseif ~isempty(p.Results.angle_deg)
+        if strcmp(p.Results.type, 'lg')
+          beam_angle = p.Results.angle_deg*180.0/pi;
+          beam.w0 = ott.utils.lg_mode_w0(p.Results.mode, beam_angle);
+        else
+          error('Unable to calculate beam waist from angle');
+        end
+      elseif ~isempty(p.Results.angle)
+        if strcmp(p.Results.type, 'lg')
+          beam_angle = p.Results.angle;
+          beam.w0 = ott.utils.lg_mode_w0(p.Results.mode, beam_angle);
+        else
+          error('Unable to calculate beam waist from angle');
+        end
+      elseif ~isempty(p.Results.w0)
+        beam.w0 = p.Results.w0;
+      else
+        error('Unabe to calculate beam waist, too many arguments');
+      end
+
+      % TODO: Remove these
+      w0 = beam.w0;
+      truncation_angle = beam.truncation_angle * 180/pi;
+      nmax = 20;
+      k = 2.0*pi; %beam.k_medium;
 
       % TODO: bsc_pointmatch_farfield.m had other arguments
       % optional parameters:
@@ -81,14 +156,11 @@ classdef BscPmGauss < ott.BscPointmatch
       %   high order mode shape at large angles.
 
       import ott.*
-      import utils.*
+      import ott.utils.*
 
       axisymmetry = 1;
 
       zero_rejection_level = 1e-8;
-
-      medium_refractive_index = 1;
-      beam_wavelength0 = 1;
 
       %radial and azimuthal polarisation.
       radial=0;
@@ -97,13 +169,15 @@ classdef BscPmGauss < ott.BscPointmatch
       %% mode selection
       switch p.Results.type
         case 'hg'
-          [m, n] = p.Results.mode;
+          m = p.Results.mode(1);
+          n = p.Results.mode(2);
           paraxial_order=n+m;
           [modeweights,initial_mode,final_mode] = ...
               paraxial_transformation_matrix(paraxial_order,0,1,0);
           [row]=find(final_mode(:,1)==m,1);
         case 'lg'
-          [radial_mode, azimuthal_mode] = p.Results.mode;
+          radial_mode = p.Results.mode(1);
+          azimuthal_mode = p.Results.mode(2);
           paraxial_order=2*radial_mode+abs(azimuthal_mode);
           modeweights=eye(paraxial_order+1);
           row=(azimuthal_mode+paraxial_order)/2+1;
@@ -113,7 +187,10 @@ classdef BscPmGauss < ott.BscPointmatch
           
           initial_mode=[i1_out,i2_out];
         case 'ig'
-          [paraxial_order, azimuthal_mode, parity, elipticity]=p.Results.mode;
+          paraxial_order = p.Results.mode(1);
+          azimuthal_mode = p.Results.mode(2);
+          parity = p.Results.mode(3);
+          elipticity = p.Results.mode(4);
           
           [modeweights,initial_mode,final_mode] = ...
              paraxial_transformation_matrix(paraxial_order,0,[2,elipticity],0);
@@ -130,47 +207,8 @@ classdef BscPmGauss < ott.BscPointmatch
       initial_mode=initial_mode(keepz,:);
       c=modeweights(row,keepz);
 
-      if isempty(p.Results.w0) && isempty(p.Results.angle) ...
-          && isempty(p.Results.angle_deg) && isempty(p.Results.NA)
-        if strcmp(p.Results.type, 'lg')
-          NA = 1.02;
-          beam_angle = asin(NA/medium_refractive_index)*180.0/pi;
-          w0 = lg_mode_w0(p.Results.mode, beam_angle);
-        else
-          error('No beam waist specified');
-        end
-      elseif ~isempty(p.Results.NA)
-        if strcmp(p.Results.type, 'lg')
-          NA = p.Results.NA;
-          beam_angle = asin(NA/medium_refractive_index)*180.0/pi;
-          w0 = lg_mode_w0(p.Results.mode, beam_angle);
-        else
-          error('Unable to calculate beam waist from NA');
-        end
-      elseif ~isempty(p.Results.angle_deg)
-        if strcmp(p.Results.type, 'lg')
-          beam_angle = p.Results.angle_deg*180.0/pi;
-          w0 = lg_mode_w0(p.Results.mode, beam_angle);
-        else
-          error('Unable to calculate beam waist from angle');
-        end
-      elseif ~isempty(p.Results.angle)
-        if strcmp(p.Results.type, 'lg')
-          beam_angle = p.Results.angle;
-          w0 = lg_mode_w0(p.Results.mode, beam_angle);
-        else
-          error('Unable to calculate beam waist from angle');
-        end
-      elseif ~isempty(p.Results.w0)
-        w0 = p.Results.w0;
-      else
-        error('Unabe to calculate beam waist, too many arguments');
-      end
-
-      k = 2*pi * medium_refractive_index / beam_wavelength0;
-
-      [xcomponent, ycomponent] = p.Results.polarisation;
-      truncation_angle = p.Results.truncation_angle_deg;
+      xcomponent = p.Results.polarisation(1);
+      ycomponent = p.Results.polarisation(2);
       offset = p.Results.offset;
 
       if numel(offset) == 3 && any(abs(offset(1:2))>0)
@@ -191,12 +229,12 @@ classdef BscPmGauss < ott.BscPointmatch
       if axisymmetry
           ntheta = 2*(nmax+1);
           nphi = 3;
-          if ~strcmp(beam_type, 'lg')
+          if ~strcmp(p.Results.type, 'lg')
               nphi = paraxial_order+3-rem(paraxial_order,2);
           end
       end
 
-      [theta,phi] = angulargrid(ntheta,nphi);
+      [theta,phi] = ott.utils.angulargrid(ntheta,nphi);
 
       np = length(theta);
 
@@ -248,7 +286,7 @@ classdef BscPmGauss < ott.BscPointmatch
 
       % degree and order of all modes
       total_modes = nmax^2 + 2*nmax;
-      [nn,mm] = combined_index((1:total_modes)');
+      [nn,mm] = ott.utils.combined_index((1:total_modes)');
 
       mode_index_vector=[];
       beam_envelope = zeros(np,length(c));
