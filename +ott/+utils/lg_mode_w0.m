@@ -10,8 +10,6 @@ function w0 = lg_mode_w0( mode, angle )
 % This file is part of the optical tweezers toolbox.
 % See LICENSE.md for information about using/distributing this file.
 
-import ott.*
-
 % Precalculated results for small l
 psi1 = [ 2.25262074788770;
    3.14619322065846;
@@ -68,5 +66,3 @@ end
 % We want w_0 in wavelengths, so k = 2*pi
 
 w0 = sqrt(psi)/(pi*tan(angle*pi/180));
-
-return

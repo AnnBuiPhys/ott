@@ -11,7 +11,7 @@ function LG = lgmode(p,l,r,phi,z,theta)
 % This file is part of the optical tweezers toolbox.
 % See LICENSE.md for information about using/distributing this file.
 
-import ott.*
+import ott.utils.*
 
 if nargin<6
     theta=atan(1/pi)*180/pi;
@@ -55,5 +55,3 @@ r=r./w_z;
 
 LG = sqrt(2*factorial(p)/(pi*factorial(p+abs(l)))) * (sqrt(2)*r).^abs(l) .* laguerre(p,abs(l),2*r.^2) ...
     .* extFac .* exp(-r.^2) .* exp(1i * (2*p + abs(l) + 1) * psi )./w_z;
-
-return
