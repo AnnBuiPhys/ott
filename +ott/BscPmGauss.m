@@ -94,7 +94,7 @@ classdef BscPmGauss < ott.BscPointmatch
       elseif ~isempty(p.Results.truncation_angle)
         beam.truncation_angle = p.Results.truncation_angle;
       elseif ~isempty(p.Results.truncation_angle_deg)
-        beam.truncation_angle = p.Results.truncation_angle * pi/180;
+        beam.truncation_angle = p.Results.truncation_angle_deg * pi/180;
       else
         error('Truncation angle given in degrees and radians');
       end
@@ -105,7 +105,8 @@ classdef BscPmGauss < ott.BscPointmatch
           && isempty(p.Results.index_medium)
         if strcmp(p.Results.type, 'lg')
           NA = 1.02;
-          beam_angle = asin(NA/p.Results.index_medium)*180.0/pi;
+          index_medium = 1.33;
+          beam_angle = asin(NA/index_medium)*180.0/pi;
           beam.w0 = ott.utils.lg_mode_w0(p.Results.mode, beam_angle);
         else
           error('No beam waist specified');
@@ -114,6 +115,11 @@ classdef BscPmGauss < ott.BscPointmatch
         if strcmp(p.Results.type, 'lg')
           NA = p.Results.NA;
           beam_angle = asin(NA/p.Results.index_medium)*180.0/pi;
+          if ~isreal(beam_angle)
+            warning('ott:BscPmGauss:imag_beam_angle', ...
+                'Beam angle is imaginary, using beam_angle_deg = 90');
+            beam_angle = 90;
+          end
           beam.w0 = ott.utils.lg_mode_w0(p.Results.mode, beam_angle);
         else
           error('Unable to calculate beam waist from NA');
@@ -141,8 +147,13 @@ classdef BscPmGauss < ott.BscPointmatch
       % TODO: Remove these
       w0 = beam.w0;
       truncation_angle = beam.truncation_angle * 180/pi;
-      nmax = 20;
       k = 2.0*pi; %beam.k_medium;
+
+      % Estimate nmax from the beam waist (if not supplied)
+      nmax = p.Results.Nmax;
+      if isempty(nmax)
+        nmax = ott.ka2nmax(w0);
+      end
 
       % TODO: bsc_pointmatch_farfield.m had other arguments
       % optional parameters:
@@ -303,13 +314,15 @@ classdef BscPmGauss < ott.BscPointmatch
           
           beam_envelope(:,ii)=c(ii)*beam_envelope(:,ii)/aperture_power_normalization*mode_input_power;
           
-          mode_index_vector=[mode_index_vector;find(mm==azimuthal_mode+1-max([azimuthal,radial])|mm==azimuthal_mode-1+max([azimuthal,radial]))];
+          mode_index_vector=[mode_index_vector; ...
+              find(mm==azimuthal_mode+1-max([azimuthal,radial]) ...
+              | mm==azimuthal_mode-1+max([azimuthal,radial]))];
 
       end
       mode_index_vector=unique(mode_index_vector);
 
       beam_envelope=sum(beam_envelope,2);
-      outbeam = find(theta<pi*(180-truncation_angle)/180);
+      outbeam = theta<pi*(180-truncation_angle)/180;
       beam_envelope(outbeam) = 0;
 
       if ~isempty(offset)
@@ -330,7 +343,7 @@ classdef BscPmGauss < ott.BscPointmatch
         Ephi = - Ex .* sin(phi) + Ey .* cos(phi);
       end
 
-      e_field = [[ Etheta(:); Ephi(:) ]];
+      e_field = [ Etheta(:); Ephi(:) ];
 
       if axisymmetry
         nn=nn(mode_index_vector);

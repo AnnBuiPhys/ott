@@ -98,7 +98,7 @@ switch basis_out(1)
         i3_out=[0:paraxial_order].';
         i2_out=paraxial_order-2*(floor(i3_out/2));
         i1_out=paraxial_order*ones(paraxial_order+1,1);  
-        i3_out=iseven(i3_out);
+        i3_out=ott.utils.iseven(i3_out);
         
 end
 row_modes=[i1_out,i2_out,i3_out];
@@ -117,7 +117,7 @@ switch basis_in(1)
         i3_in=[0:paraxial_order].';
         i2_in=paraxial_order-2*(floor(i3_in/2));
         i1_in=paraxial_order*ones(paraxial_order+1,1);  
-        i3_in=iseven(i3_in);
+        i3_in=ott.utils.iseven(i3_in);
 
 end
 col_modes=[i1_in,i2_in,i3_in];
@@ -282,7 +282,7 @@ function [modeweights,LGlookups,IGlookups]=genLG2IG(order_paraxial,xi)
 % PACKAGE INFO
 
 %first create the upper block... these are the fourier coefficients...
-[A_n,B_n]=incecoefficients(order_paraxial,xi);
+[A_n,B_n]=ott.utils.incecoefficients(order_paraxial,xi);
 
 %prepare the index matrices for this upper block.
 p=[floor(order_paraxial/2):-1:0];
@@ -338,7 +338,7 @@ function [modeweights,LGlookups,IGlookups]=genLG2vIG(order_paraxial,xi)
 % PACKAGE INFO
 
 %first create the upper block... these are the fourier coefficients...
-[A_n,B_n]=incecoefficients(order_paraxial,xi);
+[A_n,B_n]=ott.utils.incecoefficients(order_paraxial,xi);
 
 %prepare the index matrices for this upper block.
 p=[floor(order_paraxial/2):-1:0];
